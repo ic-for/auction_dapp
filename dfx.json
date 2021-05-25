@@ -1,0 +1,34 @@
+{
+  "canisters": {
+    "auction_dapp": {
+      "main": "src/auction_dapp/Governor.mo",
+      "type": "motoko"
+    },
+    "auction_dapp_assets": {
+      "dependencies": [
+        "auction_dapp"
+      ],
+      "frontend": {
+        "entrypoint": "src/auction_dapp_assets/src/index.html"
+      },
+      "source": [
+        "src/auction_dapp_assets/assets",
+        "dist/auction_dapp_assets/"
+      ],
+      "type": "assets"
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": ""
+    }
+  },
+  "dfx": "0.7.0",
+  "networks": {
+    "local": {
+      "bind": "127.0.0.1:8000",
+      "type": "ephemeral"
+    }
+  },
+  "version": 1
+}
