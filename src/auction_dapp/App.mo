@@ -135,11 +135,11 @@ actor class App(balancesAddr: Principal) = App {
     ///   The new updated Auction (see Auction in Types.mo)
     func setNewBidderAndGet(auction: Auction, bid: Nat, bidder: Principal) : (Auction) {
         {
-        owner = auction.owner;
-        item = auction.item;
-        highestBid = bid;
-        highestBidder = ?bidder;
-        ttl = auction.ttl;
+            owner = auction.owner;
+            item = auction.item;
+            highestBid = bid;
+            highestBidder = ?bidder;
+            ttl = auction.ttl;
         }
     };
 }

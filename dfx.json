@@ -1,7 +1,7 @@
 {
   "canisters": {
     "auction_dapp": {
-      "main": "src/auction_dapp/Governor.mo",
+      "main": "src/auction_dapp/Main.mo",
       "type": "motoko"
     },
     "auction_dapp_assets": {
