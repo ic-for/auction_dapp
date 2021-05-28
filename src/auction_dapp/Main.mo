@@ -42,7 +42,7 @@ actor {
             case (_, null) Debug.print("Should call deployBalances() first");
             case (_, ?bal) {
                 let tempApp = await App.App(Principal.fromActor(bal));
-                tempApp.createAuctionItem(
+                tempApp.startAuction(
                     Principal.fromActor(tempApp),
                     "auction dapp",
                     "auction description .......",

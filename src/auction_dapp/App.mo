@@ -5,6 +5,7 @@ import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
 import Principal "mo:base/Principal";
 import Time "mo:base/Time";
+import Option "mo:base/Option";
 
 import Balances "./Balances";
 import Types "./Types";
@@ -38,7 +39,7 @@ actor class App(balancesAddr: Principal) = App {
     ///     |description|   The item's description.
     ///     |url|       The url the auction can be access at.
     ///     |startingBid|  The starting price of the item
-    public func createAuctionItem(
+    public func startAuction(
         owner: UserId,
         name: Text,
         description: Text,
@@ -69,28 +70,37 @@ actor class App(balancesAddr: Principal) = App {
                 #err(#auctionNotFound)
             };
             case (?auction) {
-                switch (auction.highestBidder) {
-                    case (null) {
-                        auctions.put(auctionId, setNewBidderAndGet(auction, amount, bidder));
-                        #ok()
-                    };
-                    case (?prviousHighestBidder) {
-                        if (amount > auction.highestBid) {
-                            let myPrincipal = Principal.fromActor(App);
-                            ignore balances.transfer(bidder, myPrincipal, amount);
-                            ignore balances.transfer(myPrincipal, prviousHighestBidder, auction.highestBid);
-                            auctions.put(auctionId, setNewBidderAndGet(auction, amount, bidder));
-                            #ok()
-                        } else {
-                            #err(#belowMinimumBid) /// FIXME
+                // Distributed System module2
+                if (Time.now() > auction.ttl) { return #err(#auctionExpired) };
+
+                switch (acquireLock(bidder, auctionId, auction)) {
+                    case (#err(e)) #err(e);
+                    case (#ok) {
+                        switch (auction.highestBidder) {
+                            case (null) {
+                                auctions.put(auctionId, setNewBidderAndGet(auction, amount, bidder));
+                                #ok()
+                            };
+                            case (?prviousHighestBidder) {
+                                if (amount > auction.highestBid) {
+                                    let myPrincipal = Principal.fromActor(App);
+                                    ignore balances.transfer(bidder, myPrincipal, amount);
+                                    ignore balances.transfer(myPrincipal, prviousHighestBidder, auction.highestBid);
+                                    auctions.put(auctionId, setNewBidderAndGet(auction, amount, bidder));
+                                    #ok()
+                                } else {
+                                    #err(#belowMinimumBid) /// FIXME
+                                }
+                            };
                         }
                     };
                 }
+                
             };
         }
     };
 
-    /// Helper method used to create a new item (used in auctionItem).
+    /// Helper method used to create a new item (used in startAuction).
     /// Args:
     ///   |name|         The item's name.
     ///   |description|  The item's description.
@@ -123,6 +133,8 @@ actor class App(balancesAddr: Principal) = App {
             highestBid = startingBid;
             highestBidder = null;
             ttl = Time.now() + (3600 * 1000_1000_1000);
+            lock = owner;
+            lock_ttl = 0;
         }
     };
 
@@ -140,6 +152,49 @@ actor class App(balancesAddr: Principal) = App {
             highestBid = bid;
             highestBidder = ?bidder;
             ttl = auction.ttl;
+            lock = auction.lock;
+            lock_ttl = auction.lock_ttl;
         }
     };
+
+    /// setNewLock() Helper method used to set a new highest bidder in an auction (used in acquireLock())
+    /// Args:
+    ///     |auction|   The Auction being updated
+    ///     |lockAcquirer|  The id of the user acquiring the lock
+    /// Returns:
+    ///     The updated Auction
+    func setNewLock(auction: Auction, lockAcquirer: UserId) : (Auction) {
+        {
+            owner = auction.owner;
+            item = auction.item;
+            highestBid = auction.highestBid;
+            highestBidder = auction.highestBidder;
+            ttl = auction.ttl;
+            lock = lockAcquirer;
+            lock_ttl = Time.now() + (3600 * 1000_1000);
+        }
+    };
+
+    /// acquireLock() Helper a "lock" in a user's name for a particular Auction, preventing other users from
+    /// bidding on the auction for a short time (used in makeBid())
+    /// Args:
+    ///     |id|    The UserId of the user acquiring the lock
+    ///     |auctionId| The id of the auction
+    ///     |auction|   The auction itself
+    /// Returns:
+    ///     A Result indicating if the lock was successfully acquired 
+    func acquireLock(
+        id: UserId,
+        auctionId: AuctionId,
+        auction: Auction
+    ) : (Result) {
+        if (id == Option.unwrap(auction.highestBidder)) {
+            #err(#highestBidderNotPermitted)
+        } else if (Time.now() > auction.lock_ttl) {
+            auctions.put(auctionId, setNewLock(auction, id));
+            #ok()
+        } else {
+            #err(#lockNotAcquired)
+        }
+    }
 }
