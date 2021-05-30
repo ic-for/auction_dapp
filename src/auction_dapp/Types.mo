@@ -1,4 +1,5 @@
 import Hash "mo:base/Hash";
+import Heap "mo:base/Heap";
 import Nat "mo:base/Nat";
 import Result "mo:base/Result";
 
@@ -6,6 +7,18 @@ module {
     public type AuctionId = Nat;
     public type UserId = Principal;
     public type Result = Result.Result<(), Error>;
+
+    // Distributed Systems module3
+    public type Bid = {
+        seq: Nat;
+        amount: Nat;
+        auctionId: AuctionId;
+    };
+
+    public type UserState = {
+        var seq: Nat;
+        bids: Heap.Heap<Bid>;
+    }
 
     public type Auction = {
         owner: UserId;
@@ -45,10 +58,13 @@ module {
         #insufficientBalance;
         #auctionNotFound;
         #userNotFound;
-        // Distributed System module2
+        // Distributed Systems module2
         #highestBidderNotPermitted;
         #lockNotAcquired;
         #auctionExpired;
+        
+        // Distributed Systems module3
+        #seqOutOfOrder;
     };
 
     public type Vote = {

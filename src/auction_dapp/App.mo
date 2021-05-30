@@ -21,6 +21,10 @@ actor class App(balancesAddr: Principal) = App {
     let balances = actor (Principal.toText(balancesAddr)) : Balances.Balances;
 
     let auctions = HashMap.HashMap<AuctionId, Auction>(1, Nat.equal, Hash.hash);
+
+    // Distributed Systems module3
+    let userStates = HashMap.HashMap<UserId, UserState>(1, Principal.equal, Principal.hash);
+
     var auctionCounter = 0;
 
     /// Query functions:
@@ -197,4 +201,90 @@ actor class App(balancesAddr: Principal) = App {
             #err(#lockNotAcquired)
         }
     }
+
+    // Distributed Systems module3
+    /// makeNewUserState() Helper method used to initialize a new UserState.
+    /// Returns:
+    ///     A UserState with a starting |seq| of 0 and empty |bids| heap.
+    func makeNewUserState() : (UserState) {
+        {
+            var seq = 0;
+            bids = Heap.Heap<Bid>(bidOrd)
+        }
+    };
+
+    /// bidOrd(x, y) Helper method used to order the bids in the UserState heap (used in makeNewUserState())
+    /// Args:
+    ///     |x| the first Bid
+    ///     |y| the second Bid
+    /// Returns:
+    ///     A Motoko Order variant type: either #less or #greater.
+    func bidOrd(x: Bid, y: Bid) : () {
+        if (x.seq < y.seq) #less else #greater
+    };
+
+    /// getSeq(userId) Helper method used to retrieve the current |seq| of a user
+    /// used in both User.mo's makeQueuedBid() and App.mo's makeQueuedBid().
+    /// Args:
+    ///     |userId|    The UserId of the specified user.
+    /// Returns:
+    ///     A UserState.seq in the form of the Nat
+    public func getSeq(userId: UserId) : (Nat) {
+        switch (userStates.get(userId)) {
+            case (null) {
+                userStates.put(userId, makeNewUserState());
+                0
+            };
+            case (?userState) {
+                userState.seq
+            };
+        }
+    };
+
+    /// putBid(userId, bid) Helper method used to place a bid in a user's userState.
+    /// Args:
+    ///     |userId|    The UserId of the specified User
+    ///     |bid|       The specified Bid
+    func putBid(userId: UserId, bid: Bid) : () {
+        switch (userStates.get(userId)) {
+            case (null) Prelude.unreachable();
+            case (?userState) {
+                userState.bids.put(bid);
+                userState.seq := bid.seq;
+            };
+        }
+    };
+
+    /// makeQueuedBid(bid) Called by User to queue a |bid|
+    /// Args:
+    ///     |bid|   The Bid to be queued
+    /// Returns:
+    ///     A Result indicating if the the bid was successfully queued
+    public shared(msg) func makeQueuedBid(bid: Bid) : async (Result) {
+        let seq = await getSeq(msg.caller);
+        if (bid.seq > seq) {
+            putBid(msg.caller, bid);
+            #ok()
+        } else {
+            #err(#seqOutOfOrder)
+        }
+    };
+
+    public shared(msg) func processBids() : async (Result) {
+        switch (userStates.get(msg.caller)) {
+            case (null) return #err(#userNotFound);
+            case (?userState) {
+                loop {
+                    switch (userState.bids.peekMin()) {
+                        case (null) { return ok# };
+                        case (?bid) {
+                            ignore await makeBid(msg.caller, bid.auctoinId, bid.amount))
+                        };
+                    };
+
+                    userState.bids.deleteMin();
+                };
+            };
+        }
+    };
 }
