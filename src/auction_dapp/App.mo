@@ -14,9 +14,15 @@ actor class App(balancesAddr: Principal) = App {
 
     type Auction = Types.Auction;
     type AuctionId = Types.AuctionId;
+    // Distributed System module4
+    type Bid = Types.Bid;
+    type BidProof = Types.BidProof;
+    type HashedBid = Hash.Hash
+
     type Item = Types.Item;
     type Result = Types.Result;
     type UserId = Types.UserId;
+    type UserState = Types.UserState
 
     let balances = actor (Principal.toText(balancesAddr)) : Balances.Balances;
 
@@ -25,6 +31,10 @@ actor class App(balancesAddr: Principal) = App {
     // Distributed Systems module3
     let userStates = HashMap.HashMap<UserId, UserState>(1, Principal.equal, Principal.hash);
 
+    // Distributed Systems module4
+    let hashedBids = HashMap.HashMap<AuctionId, [HashedBid]>(1, Nat.equal, Hash.hash);
+
+    // Used to create unique auctionIds in startAuction()
     var auctionCounter = 0;
 
     /// Query functions:
@@ -270,6 +280,9 @@ actor class App(balancesAddr: Principal) = App {
         }
     };
 
+    /// processBids() Called by Users to process all the current bids stored in their UserState.
+    /// Returns:
+    ///     A Result indicating if the bids were successfully processed
     public shared(msg) func processBids() : async (Result) {
         switch (userStates.get(msg.caller)) {
             case (null) return #err(#userNotFound);
@@ -287,4 +300,59 @@ actor class App(balancesAddr: Principal) = App {
             };
         }
     };
-}
+
+    /// Distributed Systems module4
+    /// makeHashedBid(auctionId, hashedBid) Add the |hashedBid| to an auctions's array of bids in HashedBids
+    /// Args:
+    ///     |auctionId| The id of the auction.
+    ///     |hashedBid| The hashed result of the bid to be submitted.
+    /// Returns:
+    ///     A Result indicating if the lock was successfully acquired
+    public shared(msg) func makeHashedBid(
+        auctionId: AuctionId,
+        hashedBid: HashedBid
+    ) : async (Result) {
+        switch (auctions.get(auctionId)) {
+            case (null) #err(#auctionNotFound);
+            case (?auction) {
+                if (Time.now() > auction.ttl) { return #err(#auctionExpired) };
+
+                hashedBids.put(
+                    auctionId, 
+                    Array.append<HashedBid>(
+                        [hashedBid],
+                        switch (hashedBids.get(auctionId)) {
+                            case (null) [];
+                            case (?hashedBidsArr) hashedBidsArr;
+                        }
+                    )
+                );
+
+                #ok() 
+            };
+        }
+    };
+
+
+    /// proofHash(bidProof)  Helper method used to create the hash of the BidProof
+    /// Args:
+    ///     |bidProof|  The BidProof to be hashed 
+    /// Returns:
+    ///     A Hash of the |salt| append to the |amount|
+    func proofHash(bidProof: BidProof) : Hash.Hash {
+        Text.hash(Nat.toText(bidProof.amount) # bidProof.salt)
+    };
+
+    /// processHashedBids(auctionId, auction, bidder, amount)
+    /// Helper method used in publishBidProof() to process bids once the bidder has chosen to publish their bid proof.
+    /// Args:
+    ///     |auctionId| The AuctionId of the auction for which the bids belong to.
+    ///     |auction|   The Auction itself.
+    ///     |bidder|    The UserId of the bidder
+    ///     |amount|    The bid amount
+    /// Returns:
+    ///     A Result indicating if the bids were successfully processed
+    // func processHashedBids(
+    //     auctionId: AuctionId,
+    // )
+};

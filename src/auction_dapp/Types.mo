@@ -20,6 +20,12 @@ module {
         bids: Heap.Heap<Bid>;
     }
 
+    // Distributed Systems module4
+    public type BidProof = {
+        amount: Nat'
+        salt: Text;
+    };
+
     public type Auction = {
         owner: UserId;
         item: Item;
