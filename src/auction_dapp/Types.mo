@@ -18,11 +18,11 @@ module {
     public type UserState = {
         var seq: Nat;
         bids: Heap.Heap<Bid>;
-    }
+    };
 
     // Distributed Systems module4
     public type BidProof = {
-        amount: Nat'
+        amount: Nat;
         salt: Text;
     };
 
@@ -71,6 +71,10 @@ module {
         
         // Distributed Systems module3
         #seqOutOfOrder;
+
+        // Distributed System module4
+        #auctionStillActive;
+        #bidHashNotSubmitted;
     };
 
     public type Vote = {

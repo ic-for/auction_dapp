@@ -1,11 +1,16 @@
 import Array "mo:base/Array";
 import Hash "mo:base/Hash";
 import HashMap "mo:base/HashMap";
+import Heap "mo:base/Heap";
 import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
-import Principal "mo:base/Principal";
-import Time "mo:base/Time";
 import Option "mo:base/Option";
+import Order "mo:base/Order";
+import Principal "mo:base/Principal";
+import Prelude "mo:base/Prelude";
+import Time "mo:base/Time";
+import Text "mo:base/Text";
+
 
 import Balances "./Balances";
 import Types "./Types";
@@ -17,12 +22,12 @@ actor class App(balancesAddr: Principal) = App {
     // Distributed System module4
     type Bid = Types.Bid;
     type BidProof = Types.BidProof;
-    type HashedBid = Hash.Hash
+    type HashedBid = Hash.Hash;
 
     type Item = Types.Item;
     type Result = Types.Result;
     type UserId = Types.UserId;
-    type UserState = Types.UserState
+    type UserState = Types.UserState;
 
     let balances = actor (Principal.toText(balancesAddr)) : Balances.Balances;
 
@@ -210,7 +215,7 @@ actor class App(balancesAddr: Principal) = App {
         } else {
             #err(#lockNotAcquired)
         }
-    }
+    };
 
     // Distributed Systems module3
     /// makeNewUserState() Helper method used to initialize a new UserState.
@@ -219,7 +224,7 @@ actor class App(balancesAddr: Principal) = App {
     func makeNewUserState() : (UserState) {
         {
             var seq = 0;
-            bids = Heap.Heap<Bid>(bidOrd)
+            bids = Heap.Heap<Bid>(bidOrd);
         }
     };
 
@@ -229,7 +234,7 @@ actor class App(balancesAddr: Principal) = App {
     ///     |y| the second Bid
     /// Returns:
     ///     A Motoko Order variant type: either #less or #greater.
-    func bidOrd(x: Bid, y: Bid) : () {
+    func bidOrd(x: Bid, y: Bid) : (Order.Order) {
         if (x.seq < y.seq) #less else #greater
     };
 
@@ -239,7 +244,7 @@ actor class App(balancesAddr: Principal) = App {
     ///     |userId|    The UserId of the specified user.
     /// Returns:
     ///     A UserState.seq in the form of the Nat
-    public func getSeq(userId: UserId) : (Nat) {
+    public func getSeq(userId: UserId) : async (Nat) {
         switch (userStates.get(userId)) {
             case (null) {
                 userStates.put(userId, makeNewUserState());
@@ -289,9 +294,9 @@ actor class App(balancesAddr: Principal) = App {
             case (?userState) {
                 loop {
                     switch (userState.bids.peekMin()) {
-                        case (null) { return ok# };
+                        case (null) { return #ok() };
                         case (?bid) {
-                            ignore await makeBid(msg.caller, bid.auctoinId, bid.amount))
+                            ignore await makeBid(msg.caller, bid.auctionId, bid.amount)
                         };
                     };
 
@@ -352,7 +357,65 @@ actor class App(balancesAddr: Principal) = App {
     ///     |amount|    The bid amount
     /// Returns:
     ///     A Result indicating if the bids were successfully processed
-    // func processHashedBids(
-    //     auctionId: AuctionId,
-    // )
+    func processHashedBids(
+        auctionId: AuctionId,
+        auction: Auction,
+        bidder: UserId,
+        amount: Nat
+    ) : async (Result) {
+        switch (auction.highestBidder) {
+            case (null) {
+                auctions.put(auctionId, setNewBidderAndGet(auction, amount, bidder));
+                #ok()
+            };
+            case (?previousHighestBidder) {
+                if (amount > auction.highestBid) {
+                    let myPrincipal = Principal.fromActor(App);
+                    ignore balances.transfer(bidder, myPrincipal, amount);
+                    ignore balances.transfer(
+                        myPrincipal, 
+                        previousHighestBidder,
+                        auction.highestBid
+                    );
+
+                    auctions.put(auctionId, setNewBidderAndGet(auction, amount, bidder));
+                    #ok()
+                } else {
+                    #err(#belowMinimumBid)
+                }
+            };
+        }
+    };
+
+    /// publishBidProof(auctionId, AuctionId, bidProof) Call by a user once an auction is over to "reveal" their bids
+    /// Args:
+    ///     |auctionId| The id of the auction.
+    ///     |bidProof|  The BidProof to be published.
+    /// Returns:
+    ///     A Result indicating if the lock was successfully acquired
+    public shared(msg) func publishBidProof(
+        auctionId: AuctionId,
+        bidProof: BidProof
+    ) : async (Result) {
+        switch (auctions.get(auctionId)) {
+            case (null) #err(#auctionNotFound);
+            case (?auction) {
+                if (Time.now() < auction.ttl) { return #err(#auctionStillActive) };
+
+                let proof = proofHash(bidProof);
+                switch (Array.find<HashedBid>(
+                    switch (hashedBids.get(auctionId)) {
+                        case (null) [];
+                        case (?hashedBidArr) hashedBidArr;
+                    },
+                    func (elem: HashedBid) : Bool { Hash.equal(elem, proof) }
+                )) {
+                    case (null) #err(#bidHashNotSubmitted);
+                    case (_) {
+                        await processHashedBids(auctionId, auction, msg.caller, bidProof.amount)
+                    };
+                }
+            };
+        }
+    };
 };
